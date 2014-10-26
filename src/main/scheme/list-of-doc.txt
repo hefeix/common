@@ -1,0 +1,40 @@
+[syntax] (list-of expr clause ...)
+
+List-of provices the syntax of list comprehensions, which generate lists by means of looping expressions. The result is a list of objects of the type returned by expr. There are four types of clauses:
+ (var range first past [step])
+Loop over the implicit list of numbers that contains first as its first element and increments each succeeding element by step. The list ends before past, which is not an element of the list. If step is not given it defaults to 1, if first is less than past and -1 otherwise. first, past and step may be of any numeric type; if any of first, past or step are inexact, the length of the output list may differ from (ceiling (- (/ (- past first) step) 1).
+ (var in list-expr)
+Loop over the elements of list-expr, in order from the start of the list, binding each element of the list in turn to var.
+ (var is expr)
+Bind var to the value obtained by evaluating expr.
+ (pred? expr)
+Include in the output list only those elements expr for which (pred? expr) is non-#f.
+The scope of variables bound in the list comprehension is the clauses to the right of the binding clause (but not the binding clause itself) plus the result expression. When two or more generators are present, the loops are processed as if they are nested from left to right; that is, the rightmost generator varies fastest. If no generators are present, the result of the list comprehension is a list containing the result expression; thus, (list-of 1) produces the list '(1).
+Consider the example list comprehension shown below:
+  (list-of (+ y 6)
+    (x in '(1 2 3 4 5))
+    (odd? x)
+    (y is (* x x)))
+The first clause is (x in '(1 2 3 4 5)), where in is a keyword, x is a binding variable, and '(1 2 3 4 5) is a literal list (or an expression evaluating to a list); the list comprehension will loop through '(1 2 3 4 5), binding each list element in turn to the variable x, continuing through the rest of the list comprehension.
+The second clause is a predicate, (odd? x), which passes only those elements which cause the predicate to be true. In this case, the loop which originally had five elements will pass only three elements, 1, 3, and 5, to the remaining elements of the list comprehension.
+The third clause is (y is (* x x)), which binds y to the value resulting from the expression (* x x). This binding is applied to three items in turn, returning 1, 9, and 25.
+Finally, the list comprehension returns the value '(7 15 31), which is the result of applying the result expression (+ y 6) to each of the three items returned by the third clause.
+That macro could be written several other ways. A range clause loops over numeric sequences, so the in clause above could be rewritten as shown below; note that the final argument of the range clause never appears, which is useful in those frequent cases where you want to iterate from 0 to n-1.
+  (list-of (+ y 6)
+    (x range 1 6)
+    (odd? x)
+    (y is (* x x)))
+Yet another way to write that same comprehension uses a step size provided by the user instead of a default step size of 1:
+  (list-of (+ y 6)
+    (x range 1 6 2)
+    (y is (* x x)))
+The macro calls itself recursively, one level of recursion for each clause plus a final level of recursion for the base case. The expansion of the first sample list comprehension is shown below:
+  (let loop ((z '(1 2 3 4 5)))
+    (if (null? z)
+        '()
+        (let ((x (car z)))
+          (if (odd? x)
+              (let ((y (* x x)))
+                (cons (+ y 6) (loop (cdr z))))
+              (loop (cdr z))))))
+When this final expression is evaluated, the result is '(7 16 31).

@@ -1,0 +1,198 @@
+** Procedures for manipulating file-names
+
+These procedures do not access the file-system at all; they merely operate
+on file-name strings. Much of this structure was taken from gnu-emacs'
+procedures. Perhaps a more sophisticated system would be better, something
+like the pathname abstractions of Common Lisp or MIT Scheme. However,
+being Unix-specific, we can be a little less general. This stuff is all
+written.
+
+Terminology:
+A *directory* is a file-name ending in a slash: man/man3/, or /.
+When a directory is being treated as simply a file, we remove the trailing
+slash. This implies that the file system root, viewed as a file, not
+a directory, is named by the empty string. In other words, slashes
+function solely as *terminators* of file-name path components -- they are
+not part of the path components themselves.
+
+A file-name is a sequence of slash-delimited directory components,
+followed by an optional file component. Examples:
+
+  File name		Dir components		File component
+  ---------		--------------		--------------
+  src/des/main.c    	("src" "des")		"main.c"
+  /src/des/main.c   	("" "src" "des")	"main.c"
+  main.c		()			"main.c"
+  src/des/		("src" "des")		N/A
+
+Note that the relative path src/des/main.c and the absolute path
+/src/des/main.c are distinguished by the presence of the root component
+"" in the absolute path. A root component in a path always resets the
+directory search back to root, so /foo/bar/baz//src/des/main.c
+and /src/des/main.c are equivalent file-names.
+
+Put another way: in a directory path list, the empty string has a
+special meaning, just as "." and ".." do -- "" means "reset to root."
+
+Procedures:
+
+(file-name-as-directory fname) ; Convert a file-name to a directory.
+
+    Basically, add a trailing slash if needed:
+    (file-name-as-directory "src/des")  --> "src/des/"
+    (file-name-as-directory "src/des/") --> "src/des/"
+
+
+(directory-as-file-name fname) ; Convert a directory to a simple file-name.
+
+    Basically, kill a trailing slash if one is present:
+    (directory-as-file-name "foo/bar/") --> "foo/bar"
+    (directory-as-file-name "/")        --> ""
+
+    A screw case:
+    (directory-as-file-name "foo//")    --> "" (i.e., root, not "foo/")
+
+
+(file-name-absolute? fname) ; Does fname contain a root or ~ component?
+
+    (file-name-absolute? "/usr/shivers")	--> #t
+    (file-name-absolute? "src/des")	    	--> #f
+    (file-name-absolute? "~/src/des")	    	--> #t
+
+    An internal // or ~ resets to root or $HOME, respectively:
+    (file-name-absolute? "foo/~/src/des")	--> #t
+    (file-name-absolute? "src//des")      	--> #t (i.e., /des)
+
+    Non-obvious case:
+    (file-name-absolute? "")	       	    	--> #t (i.e., root)
+
+
+(file-name-directory fname) ; Return the directory component of fname.
+
+    (file-name-directory "/usr/shivers")   --> "/usr/"
+    (file-name-directory "/usr/shivers/")  --> "/usr/shivers/"
+    (file-name-directory "shivers/.login") --> "shivers/"
+
+    ...or, #f if no directory:
+    (file-name-directory "main.c")	--> #f
+    (file-name-directory "") 		--> #f
+
+
+(file-name-nondirectory fname) ; Return non-directory component of fname.
+
+    (file-name-directory "/usr/shivers")   --> "shivers"
+    (file-name-directory "/usr/shivers/")  --> ""
+    (file-name-directory "shivers/.login") --> ".login"
+    (file-name-directory "main.c")	   --> "main.c"
+    (file-name-directory "") 		   --> ""
+
+
+(split-file-name fname) ; Split a file-name into its components.
+
+    (split-file-name "src/des/main.c")  --> ("src" "des" "main.c")
+    (split-file-name "/src/des/main.c") --> ("" "src" "des" "main.c")
+    (split-file-name "main.c")	  --> ("main.c")
+
+
+(path-list->file-name path-list [dir]) ; Inverse of SPLIT-FILE-NAME.
+
+    (path-list->file-name '("src" "des" "main.c"))    --> src/des/main.c
+    (path-list->file-name '("" "src" "des" "main.c")) --> /src/des/main.c
+
+    Empty components reset to root:
+    (path-list->file-name '("src" "" "des" "main.c")) --> /des/main.c
+
+    Optional DIR arg anchors relative path-lists:
+    (path-list->file-name '("src" "des" "main.c") "/usr/shivers/")
+          --> "/usr/shivers/src/des/main.c"
+
+    But empty components still reset to root: 
+    (path-list->file-name '("src" "" "des" "main.c") "/usr/shivers/") 
+          --> /des/main.c
+
+    The optional DIR argument is usefully (PWD).
+    Note that PATH-LIST->FILE-NAME returns a file-name, not a directory.
+    No trailing slash, including the root case.
+
+
+(file-name-extension fname) ; Return the file-name's extension.
+
+    (file-name-extension "main.c")	    --> ".c"
+    (file-name-extension "main.c.old")      --> ".old"
+    (file-name-extension "/usr/shivers")    --> ""
+
+    Weird cases:
+    (file-name-extension "foo.") 	    --> "."
+    (file-name-extension "foo..") 	    --> "."
+
+    "Dot files" are not extensions:
+    (file-name-extension "/usr/shivers/.login")   --> ""
+
+
+(file-name-sans-extension fname) ; Return everything but the extension.
+
+    (file-name-sans-extension "main.c") 	   --> "main"
+    (file-name-sans-extension "main.c.old") 	   --> "main.c""
+    (file-name-sans-extension "/usr/shivers")	   --> "/usr/shivers"
+
+    Weird cases:
+    (file-name-sans-extension "foo.") 	   --> "foo"
+    (file-name-sans-extension "foo..") 	   --> "foo."
+
+    "Dot files" are not extensions:
+    (file-name-sans-extension "/usr/shivers/.login") 
+    	--> "/usr/shivers/.login
+
+    Note that appending the results of FILE-NAME-EXTENSION and 
+    FILE-NAME-SANS-EXTENSION in all cases produces the original file-name.
+
+
+(parse-file-name fname) ; Multiple values: [dir name extension]
+
+    This procedure returns the three values:
+    1. (file-name-directory fname)
+    2. (file-name-sans-extension (file-name-non-directory fname))
+    3. (file-name-extension fname)
+    The inverse of PARSE-FILE-NAME, in all cases, is STRING-APPEND.
+
+
+(expand-file-name fname [dir])
+
+    - Do ~ expansion.
+    - Simplify away occurences of ., .., and //.
+    - If FNAME is relative, convert it to an absolute file-name, relative
+      to directory DIR. DIR defaults to the current working directory.
+
+    Note that ~, like //, can appear in the middle of a file-name, 
+    causing the path to its left to be discarded.
+
+    Currently will convert relative->absolute only if you specify the optional
+    DIR argument. This is because there is no simple way in Unix to determine
+    the current working directory.
+
+(substitute-env-vars fname)
+
+    (substitute-env-vars "$USER/.login") --> "shivers/.login"
+    (substitute-env-vars "${USER}_log") --> "shivers_log"
+
+    Replace occurences of environment variables with their values.
+    An environment variable is denoted by a dollar sign followed by
+    alphanumeric chars and underscores, or is surrounded by braces.
+
+
+(home-dir [user])
+(home-file [user] fname)
+
+    (HOME-DIR user) returns USER's home directory. 
+    	USER defaults to the current user.
+
+    (home-dir)		--> "/user1/lecturer/shivers/"
+    (home-dir "ctkwan")	--> "/user0/research/ctkwan/"
+
+(home-file [user] fname)
+
+    Returns file-name FNAME relative to USER's home directory.
+    USER defaults to the current user.
+    
+    (home-file ".login")	    --> "/user1/lecturer/shivers/.login"
+    (home-file "fcmlau" ".login")   --> "/user0/lecturer/fcmlau/.login"
